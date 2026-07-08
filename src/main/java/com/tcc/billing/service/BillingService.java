@@ -1,5 +1,6 @@
 package com.tcc.billing.service;
 
+import com.tcc.billing.config.BillingMetrics;
 import com.tcc.billing.entity.Billing;
 import com.tcc.billing.event.OrderCompletedEvent;
 import com.tcc.billing.event.OrderCreatedEvent;
@@ -36,7 +37,7 @@ import java.util.concurrent.CompletableFuture;
  * Arquitetura:
  * - Event-driven: sem endpoints HTTP de negócio
  * - Desacoplamento: comunicação apenas via Kafka
- * - Observabilidade: logs estruturados com timestamps
+ * - Observabilidade: logs estruturados com timestamps e métricas
  */
 @Slf4j
 @Service
@@ -46,6 +47,7 @@ public class BillingService {
     private final BillingRepository billingRepository;
     private final KafkaTemplate<String, OrderCompletedEvent> orderCompletedKafkaTemplate;
     private final KafkaTemplate<String, OrderFailedEvent> orderFailedKafkaTemplate;
+    private final BillingMetrics billingMetrics;
 
     // Tópicos Kafka
     private static final String TOPIC_ORDERS_COMPLETED = "orders.completed";
@@ -89,6 +91,9 @@ public class BillingService {
         // ========================================
         long startTime = System.currentTimeMillis();
         Instant receivedAt = Instant.now();
+        
+        // Registra início nas métricas
+        billingMetrics.recordProcessingStart();
 
         log.info("");
         log.info("╔══════════════════════════════════════════════════════════════╗");
@@ -100,6 +105,7 @@ public class BillingService {
         log.info("║  Valor:      R$ {}  ", event.getAmount());
         log.info("╚══════════════════════════════════════════════════════════════╝");
 
+        BigDecimal tax = BigDecimal.ZERO;
         try {
             // ========================================
             // SIMULAÇÃO DE LATÊNCIA
@@ -136,7 +142,7 @@ public class BillingService {
             // ========================================
             String billingId = UUID.randomUUID().toString();
             BigDecimal amount = event.getAmount();
-            BigDecimal tax = amount.multiply(TAX_RATE).setScale(2, RoundingMode.HALF_UP);
+            tax = amount.multiply(TAX_RATE).setScale(2, RoundingMode.HALF_UP);
             BigDecimal totalAmount = amount.add(tax);
 
             log.info("[BILLING-SERVICE] 🧮 ETAPA 2: Calculando impostos...");
@@ -181,6 +187,7 @@ public class BillingService {
                     .amount(amount)
                     .tax(tax)
                     .totalAmount(totalAmount)
+                    .correlationId(event.getCorrelationId())
                     .eventType("OrderCompleted")
                     .eventTime(Instant.now())
                     .processedAt(processedAt)
@@ -188,6 +195,9 @@ public class BillingService {
                     .build();
 
             publishCompletedEvent(completedEvent);
+            
+            // Registra sucesso nas métricas
+            billingMetrics.recordProcessingSuccess(processingTime, tax.doubleValue());
 
             log.info("");
             log.info("╔══════════════════════════════════════════════════════════════╗");
@@ -206,6 +216,9 @@ public class BillingService {
             long endTime = System.currentTimeMillis();
             long processingTime = endTime - startTime;
             Instant failedAt = Instant.now();
+            
+            // Registra falha nas métricas
+            billingMetrics.recordProcessingFailure(processingTime);
 
             log.error("");
             log.error("╔══════════════════════════════════════════════════════════════╗");
@@ -224,6 +237,7 @@ public class BillingService {
                     .orderId(event.getOrderId())
                     .customerId(event.getCustomerId())
                     .amount(event.getAmount())
+                    .correlationId(event.getCorrelationId())
                     .errorMessage(e.getMessage())
                     .errorType(e.getClass().getSimpleName())
                     .eventType("OrderFailed")
