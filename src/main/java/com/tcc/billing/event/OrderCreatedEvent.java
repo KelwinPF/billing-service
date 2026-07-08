@@ -33,7 +33,10 @@ public class OrderCreatedEvent {
     private BigDecimal amount;
     private Instant createdAt;
 
+    // Rastreamento end-to-end
+    private String correlationId;
+
     // Metadados do evento
-    private String eventType;    // Tipo: "OrderCreated"
-    private Instant eventTime;   // Momento da publicação
+    private String eventType;
+    private Instant eventTime;
 }

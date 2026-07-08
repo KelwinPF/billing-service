@@ -29,6 +29,9 @@ public class OrderCompletedEvent {
     private BigDecimal tax;
     private BigDecimal totalAmount;
     
+    // Rastreamento end-to-end
+    private String correlationId;
+    
     // Metadados do evento
     private String eventType;       // "OrderCompleted"
     private Instant eventTime;      // Momento da publicação

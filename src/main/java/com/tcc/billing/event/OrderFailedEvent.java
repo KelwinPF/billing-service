@@ -26,6 +26,9 @@ public class OrderFailedEvent {
     private String customerId;
     private BigDecimal amount;
     
+    // Rastreamento end-to-end
+    private String correlationId;
+    
     // Informações da falha
     private String errorMessage;
     private String errorType;
